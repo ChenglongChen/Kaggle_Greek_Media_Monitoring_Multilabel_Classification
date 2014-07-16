@@ -26,7 +26,7 @@ It implements the following methods to tackle the multilabel classification prob
   
 ## Instruction
 
-* download data from the [competition website](http://www.kaggle.com/c/wise-2014/data) and put all the data into `./Data` dir
+* download data from the [competition website](http://www.kaggle.com/c/wise-2014/data) and put all the data into `./Data` dir:
  - `./Data/wise2014-train.libsvm`
  - `./Data/wise2014-test.libsvm`
  
@@ -34,11 +34,10 @@ It implements the following methods to tackle the multilabel classification prob
  - `./MATLAB/Opt_Mean_F1score/...`
  - `./MATLAB/utils/...`
 
-* run train_WISE.m.^4
+* run `train_WISE.m` to create csv submission to Kaggle.
 
 ^3 If you don't want to do this, you have to specify the correct path to the data and to the utils in the function `train_WISE.m` (see the code in the beginning).
 
-^4 If you don't have Parallel Computing Toolbox in MATLAB, turn it off in the beginning of `train_WISE.m`.
 
 ## Reference
 [1] Jesse Read, Bernhard Pfahringer, Geoff Holmes, and Eibe Frank, "Classifier chains for multi-label classification."
