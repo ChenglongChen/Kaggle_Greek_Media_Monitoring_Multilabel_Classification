@@ -132,8 +132,19 @@ verbose = 3;
 %% Linear SVM parameter configuration
 
 % which linear SVM to use
-algorithms = {'l1svm_dual', 'l2svm_dual', 'lr'};
-algorithms = {'l1svm_dual'};
+% During the competition, I only tried the first four and l2reg_l1loss_dual
+% gives the best and is fast
+algorithms = { 'l2reg_lr_primal',...
+               'l2reg_l2loss_dual',...
+               'l2reg_l2loss_primal',...
+               'l2reg_l1loss_dual',...
+               'l2reg_l1loss_dual',...
+               'l1reg_l2loss_loss',...
+               'l1reg_lr',...
+               'l2reg_lr_dual',...
+               };
+algorithms = {'l2reg_l1loss_dual'};
+% algorithms = {'l1reg_l2loss_loss'};
 
 % cost penalty for linear SVM
 % try varying C and manually select the best, though it should be based on
@@ -161,7 +172,7 @@ disp('INFO: loading testing data')
 [~, X_test, ~] = read_sparse_ml(strcat([home_path, '/Data/wise2014-test.libsvm']));
 
 % useful params
-numTrain = size(X_train, 1);
+[numTrain, numFeat] = size(X_train);
 numTest = size(X_test, 1);
 numLabel = size(y_train, 2);
 
