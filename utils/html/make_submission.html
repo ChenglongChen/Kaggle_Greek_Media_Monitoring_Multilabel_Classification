@@ -1,0 +1,119 @@
+
+<!DOCTYPE html
+  PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html><head>
+      <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+   <!--
+This HTML is auto-generated from an M-file.
+To make changes, update the M-file and republish this document.
+      --><title>make_submission</title><meta name="generator" content="MATLAB 7.10"><meta name="date" content="2014-07-16"><meta name="m-file" content="make_submission"><style type="text/css">
+
+body {
+  background-color: white;
+  margin:10px;
+}
+
+h1 {
+  color: #990000; 
+  font-size: x-large;
+}
+
+h2 {
+  color: #990000;
+  font-size: medium;
+}
+
+/* Make the text shrink to fit narrow windows, but not stretch too far in 
+wide windows. */ 
+p,h1,h2,div.content div {
+  max-width: 600px;
+  /* Hack for IE6 */
+  width: auto !important; width: 600px;
+}
+
+pre.codeinput {
+  background: #EEEEEE;
+  padding: 10px;
+}
+@media print {
+  pre.codeinput {word-wrap:break-word; width:100%;}
+} 
+
+span.keyword {color: #0000FF}
+span.comment {color: #228B22}
+span.string {color: #A020F0}
+span.untermstring {color: #B20000}
+span.syscmd {color: #B28C00}
+
+pre.codeoutput {
+  color: #666666;
+  padding: 10px;
+}
+
+pre.error {
+  color: red;
+}
+
+p.footer {
+  text-align: right;
+  font-size: xx-small;
+  font-weight: lighter;
+  font-style: italic;
+  color: gray;
+}
+
+  </style></head><body><div class="content"><pre class="codeinput"><span class="comment">%</span>
+<span class="comment">% save prediction in csv format</span>
+<span class="comment">%</span>
+
+<span class="keyword">function</span> make_submission(pre, rcv1_map, save_file_name)
+
+f = fopen(save_file_name, <span class="string">'w'</span>);
+fprintf(f,<span class="string">'%s,%s\n'</span>,<span class="string">'ArticleId'</span>,<span class="string">'Labels'</span>);
+
+start_id = 64857;
+ArticleId = (1:size(pre,1)) + start_id;
+<span class="keyword">for</span> i = 1:size(pre,1)
+    fprintf(f,<span class="string">'%s,'</span>, num2str(ArticleId(i)));
+    this_label = rcv1_map(pre(i,:)==1);
+    <span class="keyword">if</span> isempty(this_label)
+        this_label = 103;
+    <span class="keyword">end</span>
+    <span class="keyword">for</span> j = 1:length(this_label)
+        fprintf(f,<span class="string">' %s'</span>, num2str(this_label(j)));
+    <span class="keyword">end</span>
+    fprintf(f,<span class="string">'\n'</span>);
+<span class="keyword">end</span>
+fclose(f);
+
+<span class="keyword">end</span>
+</pre><p class="footer"><br>
+      Published with MATLAB&reg; 7.10<br></p></div><!--
+##### SOURCE BEGIN #####
+% 
+% save prediction in csv format
+% 
+
+function make_submission(pre, rcv1_map, save_file_name)
+
+f = fopen(save_file_name, 'w');
+fprintf(f,'%s,%s\n','ArticleId','Labels');
+
+start_id = 64857;
+ArticleId = (1:size(pre,1)) + start_id;
+for i = 1:size(pre,1)
+    fprintf(f,'%s,', num2str(ArticleId(i)));
+    this_label = rcv1_map(pre(i,:)==1);
+    if isempty(this_label)
+        this_label = 103;
+    end
+    for j = 1:length(this_label)
+        fprintf(f,' %s', num2str(this_label(j)));
+    end
+    fprintf(f,'\n');
+end
+fclose(f);
+
+end
+##### SOURCE END #####
+--></body></html>

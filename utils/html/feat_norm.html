@@ -1,0 +1,189 @@
+
+<!DOCTYPE html
+  PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html><head>
+      <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+   <!--
+This HTML is auto-generated from an M-file.
+To make changes, update the M-file and republish this document.
+      --><title>feat_norm</title><meta name="generator" content="MATLAB 7.10"><meta name="date" content="2014-07-16"><meta name="m-file" content="feat_norm"><style type="text/css">
+
+body {
+  background-color: white;
+  margin:10px;
+}
+
+h1 {
+  color: #990000; 
+  font-size: x-large;
+}
+
+h2 {
+  color: #990000;
+  font-size: medium;
+}
+
+/* Make the text shrink to fit narrow windows, but not stretch too far in 
+wide windows. */ 
+p,h1,h2,div.content div {
+  max-width: 600px;
+  /* Hack for IE6 */
+  width: auto !important; width: 600px;
+}
+
+pre.codeinput {
+  background: #EEEEEE;
+  padding: 10px;
+}
+@media print {
+  pre.codeinput {word-wrap:break-word; width:100%;}
+} 
+
+span.keyword {color: #0000FF}
+span.comment {color: #228B22}
+span.string {color: #A020F0}
+span.untermstring {color: #B20000}
+span.syscmd {color: #B28C00}
+
+pre.codeoutput {
+  color: #666666;
+  padding: 10px;
+}
+
+pre.error {
+  color: red;
+}
+
+p.footer {
+  text-align: right;
+  font-size: xx-small;
+  font-weight: lighter;
+  font-style: italic;
+  color: gray;
+}
+
+  </style></head><body><div class="content"><pre class="codeinput"><span class="comment">%</span>
+<span class="comment">% perform instance-based feature normalization</span>
+<span class="comment">% can be simply extended</span>
+
+<span class="keyword">function</span> [X_train, X_test] = feat_norm(X_train, X_test, method)
+
+<span class="keyword">if</span> strcmp(method, <span class="string">'binary'</span>)
+
+    <span class="comment">% training data</span>
+    X_train = double(X_train&gt;0);
+    <span class="comment">% testing data</span>
+    X_test = double(X_test&gt;0);
+
+<span class="keyword">elseif</span> strcmp(method, <span class="string">'binary_feat_norm'</span>)
+
+    <span class="comment">% training data</span>
+    [numTrain, numFeat] = size(X_train);
+    X_train = double(X_train&gt;0);
+    new = 1./sqrt(sum(X_train.^2, 1));
+    <span class="comment">% use the sparsity property</span>
+    [i, j] = find(X_train);
+    s = new(j);
+    X_train = sparse(i, j, s, numTrain, numFeat);
+
+    <span class="comment">% testing data</span>
+    [numTest, numFeat] = size(X_test);
+    X_test = double(X_test&gt;0);
+    new = 1./sqrt(sum(X_test.^2, 1));
+    <span class="comment">% use the sparsity property</span>
+    [i, j] = find(X_test);
+    s = new(j);
+    X_test = sparse(i, j, s, numTest, numFeat);
+
+<span class="keyword">elseif</span> strcmp(method, <span class="string">'binary_inst_norm'</span>)
+
+    <span class="comment">% training data</span>
+    [numTrain, numFeat] = size(X_train);
+    X_train = double(X_train&gt;0);
+    new = 1./sqrt(sum(X_train.^2, 2));
+    <span class="comment">% use the sparsity property</span>
+    [i, j] = find(X_train);
+    s = new(i);
+    X_train = sparse(i, j, s, numTrain, numFeat);
+
+    <span class="comment">% testing data</span>
+    [numTest, numFeat] = size(X_test);
+    X_test = double(X_test&gt;0);
+    new = 1./sqrt(sum(X_test.^2, 2));
+    <span class="comment">% use the sparsity property</span>
+    [i, j] = find(X_test);
+    s = new(i);
+    X_test = sparse(i, j, s, numTest, numFeat);
+
+<span class="keyword">elseif</span> strcmp(method, <span class="string">'log'</span>)
+
+<span class="keyword">elseif</span> ~strcmp(method, <span class="string">'raw'</span>)
+    error(<span class="string">'Must be either: binary, log, or raw'</span>);
+<span class="keyword">end</span>
+
+<span class="keyword">end</span>
+</pre><p class="footer"><br>
+      Published with MATLAB&reg; 7.10<br></p></div><!--
+##### SOURCE BEGIN #####
+%
+% perform instance-based feature normalization
+% can be simply extended
+
+function [X_train, X_test] = feat_norm(X_train, X_test, method)
+
+if strcmp(method, 'binary')
+    
+    % training data
+    X_train = double(X_train>0);
+    % testing data
+    X_test = double(X_test>0);
+    
+elseif strcmp(method, 'binary_feat_norm')
+    
+    % training data
+    [numTrain, numFeat] = size(X_train);
+    X_train = double(X_train>0);
+    new = 1./sqrt(sum(X_train.^2, 1));
+    % use the sparsity property
+    [i, j] = find(X_train);
+    s = new(j);
+    X_train = sparse(i, j, s, numTrain, numFeat);
+
+    % testing data
+    [numTest, numFeat] = size(X_test);
+    X_test = double(X_test>0);
+    new = 1./sqrt(sum(X_test.^2, 1));
+    % use the sparsity property
+    [i, j] = find(X_test);
+    s = new(j);
+    X_test = sparse(i, j, s, numTest, numFeat);
+    
+elseif strcmp(method, 'binary_inst_norm')
+    
+    % training data
+    [numTrain, numFeat] = size(X_train);
+    X_train = double(X_train>0);
+    new = 1./sqrt(sum(X_train.^2, 2));
+    % use the sparsity property
+    [i, j] = find(X_train);
+    s = new(i);
+    X_train = sparse(i, j, s, numTrain, numFeat);
+
+    % testing data
+    [numTest, numFeat] = size(X_test);
+    X_test = double(X_test>0);
+    new = 1./sqrt(sum(X_test.^2, 2));
+    % use the sparsity property
+    [i, j] = find(X_test);
+    s = new(i);
+    X_test = sparse(i, j, s, numTest, numFeat);
+    
+elseif strcmp(method, 'log')
+    
+elseif ~strcmp(method, 'raw')
+    error('Must be either: binary, log, or raw');
+end
+
+end
+##### SOURCE END #####
+--></body></html>

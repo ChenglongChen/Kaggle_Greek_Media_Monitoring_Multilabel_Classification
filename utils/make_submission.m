@@ -1,5 +1,8 @@
-function make_submission(pre, rcv1_map, save_file_name)
+% 
 % save prediction in csv format
+% 
+
+function make_submission(pre, rcv1_map, save_file_name)
 
 f = fopen(save_file_name, 'w');
 fprintf(f,'%s,%s\n','ArticleId','Labels');
