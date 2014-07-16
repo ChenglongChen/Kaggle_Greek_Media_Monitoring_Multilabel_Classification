@@ -16,12 +16,12 @@ It implements the following methods to tackle the multilabel classification prob
 
 ## Requirement
 
-- [LIBLINEAR](http://www.csie.ntu.edu.tw/~cjlin/liblinear/) For instructions of using LIBLINEAR and additional information, see the README file included in the package and the LIBLINEAR FAQ.^1
+- [LIBLINEAR](http://www.csie.ntu.edu.tw/~cjlin/liblinear/) For instructions of using LIBLINEAR and additional information, see the README file included in the package and the LIBLINEAR FAQ.
   
-- [Multi-label classification tool: read_sparse_ml.c](http://www.csie.ntu.edu.tw/~cjlin/libsvmtools/multilabel/)^2
+- [Multi-label classification tool: read_sparse_ml.c](http://www.csie.ntu.edu.tw/~cjlin/libsvmtools/multilabel/)
   
 
-^1 ^2 For your convenience, I have already included the necessary pre-complied files of LIBLINEAR and `read_sparse_ml.c` in the folder `./utils/LIBLINEAR`. Please see there for copyright information.
+For your convenience, I have already included the necessary pre-complied files of LIBLINEAR and `read_sparse_ml.c` in the folder `./utils/LIBLINEAR`. Please see there for copyright information.
   
   
 ## Instruction
@@ -30,13 +30,14 @@ It implements the following methods to tackle the multilabel classification prob
  - `./Data/wise2014-train.libsvm`
  - `./Data/wise2014-test.libsvm`
  
-* put all the code into `./MATLAB` dir:^3
+* put all the code into `./MATLAB` dir:[^1]
  - `./MATLAB/Opt_Mean_F1score/...`
+ - `./MATLAB/Opt_Macro_F1score/...`
  - `./MATLAB/utils/...`
 
-* run `train_WISE.m` to create csv submission to Kaggle.
+* run `./MATLAB/Opt_Mean_F1score/train_WISE.m` to create csv submission to Kaggle.
 
-^3 If you don't want to do this, you have to specify the correct path to the data and to the utils in the function `train_WISE.m` (see the code in the beginning).
+[^1]: If you don't want to do this, you have to specify the correct path to the data and to the utils in the function `./MATLAB/Opt_Mean_F1score/train_WISE.m` (see the code in the beginning).
 
 
 ## Reference
