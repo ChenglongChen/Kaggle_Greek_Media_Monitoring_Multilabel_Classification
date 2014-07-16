@@ -30,14 +30,14 @@ For your convenience, I have already included the necessary pre-complied files o
  - `./Data/wise2014-train.libsvm`
  - `./Data/wise2014-test.libsvm`
  
-* put all the code into `./MATLAB` dir:[^1]
+* put all the code into `./MATLAB` dir:$^1$
  - `./MATLAB/Opt_Mean_F1score/...`
  - `./MATLAB/Opt_Macro_F1score/...`
  - `./MATLAB/utils/...`
 
 * run `./MATLAB/Opt_Mean_F1score/train_WISE.m` to create csv submission to Kaggle.
 
-[^1]: If you don't want to do this, you have to specify the correct path to the data and to the utils in the function `./MATLAB/Opt_Mean_F1score/train_WISE.m` (see the code in the beginning).
+$^1$: If you don't want to do this, you have to specify the correct path to the data and to the utils in the function `./MATLAB/Opt_Mean_F1score/train_WISE.m` (see the code in the beginning).
 
 
 ## Reference
