@@ -1,0 +1,1 @@
+/local/MATLAB/R2012b/bin/matlab </home/chchengl/Greek/MATLAB/Opt_Mean_F1score/train_WISE.m> /home/chchengl/Greek/MATLAB/Opt_Mean_F1score/train_WISE.out

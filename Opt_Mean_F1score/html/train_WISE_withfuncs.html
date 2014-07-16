@@ -1,0 +1,1139 @@
+
+<!DOCTYPE html
+  PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html><head>
+      <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+   <!--
+This HTML is auto-generated from an M-file.
+To make changes, update the M-file and republish this document.
+      --><title>My solution to Greek Media Monitoring Multilabel Classification</title><meta name="generator" content="MATLAB 7.10"><meta name="date" content="2014-07-16"><meta name="m-file" content="train_WISE"><style type="text/css">
+
+body {
+  background-color: white;
+  margin:10px;
+}
+
+h1 {
+  color: #990000; 
+  font-size: x-large;
+}
+
+h2 {
+  color: #990000;
+  font-size: medium;
+}
+
+/* Make the text shrink to fit narrow windows, but not stretch too far in 
+wide windows. */ 
+p,h1,h2,div.content div {
+  max-width: 600px;
+  /* Hack for IE6 */
+  width: auto !important; width: 600px;
+}
+
+pre.codeinput {
+  background: #EEEEEE;
+  padding: 10px;
+}
+@media print {
+  pre.codeinput {word-wrap:break-word; width:100%;}
+} 
+
+span.keyword {color: #0000FF}
+span.comment {color: #228B22}
+span.string {color: #A020F0}
+span.untermstring {color: #B20000}
+span.syscmd {color: #B28C00}
+
+pre.codeoutput {
+  color: #666666;
+  padding: 10px;
+}
+
+pre.error {
+  color: red;
+}
+
+p.footer {
+  text-align: right;
+  font-size: xx-small;
+  font-weight: lighter;
+  font-style: italic;
+  color: gray;
+}
+
+  </style></head><body><div class="content"><h1>My solution to Greek Media Monitoring Multilabel Classification</h1><!--introduction--><p><a href="http://www.kaggle.com/c/wise-2014">Greek Media Monitoring Multilabel Classification (WISE 2014)</a></p><p><b>Author:</b> Chenglong Chen &lt; <a href="https://www.kaggle.com/users/102203/yr">yr@Kaggle</a> &gt;</p><p><b>Email:</b> <a href="mailto:c.chenglong@gmail.com">c.chenglong@gmail.com</a></p><p><b>Description:</b></p><p>- This solution transforms the multi-label classification problem into binary classification problmen using two different methods: Binary Relevance (BR) and Classifier Chains (CC). See [1] for details.</p><p>- For the "base classifier", it uses linear SVM. In specific, I implement the SVM.1 and SCutFBR.1 approach as described in [2] and [3].</p><p>- We use liblinear since there are ~6w instances and ~30w features. The classification algorithm can be either l1-loss, l2-loss SVM or logistic regression. (Seems l1-loss SVM works best.)</p><p>- This implementation is based on the code in the LIBSVM page, i.e., <a href="http://www.csie.ntu.edu.tw/~cjlin/libsvmtools/multilabel/rcv1/rcv1_lineart_col.m">rcv1_lineart_col.m</a>, which optimizes the macro-average F-measure. Since the evaluation metric for this competition is mean F1-score, we accordingly modify the code above and implement the cyclic optimization procedure as detailed in [3]. Compared with the original code, we observed improvement around 0.01~0.02 by directly optimizing mean F1-score.</p><p><b>Requirement:</b></p><p>- <a href="http://www.csie.ntu.edu.tw/~cjlin/liblinear/">LIBLINEAR</a>   For instructions of using LIBLINEAR and additional information, see   the README file included in the package and the LIBLINEAR FAQ.</p><p>- <a href="http://www.csie.ntu.edu.tw/~cjlin/libsvmtools/multilabel/read_sparse/read_sparse_ml.c">Multi-label classification tool: read_sparse_ml.c</a></p><p><b>Reference:</b></p><p>[1] Jesse Read, Bernhard Pfahringer, Geoff Holmes, and Eibe Frank, "Classifier chains for multi-label classification."</p><p>[2] David D. Lewis, Yiming Yang, Tony G. Rose, and Fan Li, "RCV1: A new benchmark collection for text categorization research." <i>Journal of Machine Learning Research</i>, 5:361-397, 2004.</p><p>[3] Rong-En Fan and Chih-Jen Lin, "A Study on Threshold Selection for Multi-label Classification."</p><!--/introduction--><h2>Contents</h2><div><ul><li><a href="#1">General configuration for MATLAB</a></li><li><a href="#2">General training parameter configuration</a></li><li><a href="#3">SVM.1 and SCutFBR.1 parameter configuration</a></li><li><a href="#4">Linear SVM parameter configuration</a></li><li><a href="#5">Load data</a></li><li><a href="#6">Train for each cost C and each algorithm of linear SVM</a></li><li><a href="#7">Clean up</a></li></ul><h2>Called Functions</h2><ul><li><a href="#make_prediction">make_prediction </a></li><li><a href="#mean_F1score">mean_F1score </a></li><li><a href="#train_fbr_list">train_fbr_list </a></li><li><a href="#feat_norm">feat_norm </a></li><li><a href="#make_submission">make_submission </a></li></ul></div><h2>General configuration for MATLAB<a name="1"></a></h2><pre class="codeinput">clear <span class="string">all</span>;
+close <span class="string">all</span>;
+clc;
+
+<span class="comment">% use gpucluster or not</span>
+<span class="comment">% just for my own use...</span>
+<span class="keyword">if</span> isunix  <span class="comment">% gpucluster is unix platform</span>
+    home_path = <span class="string">'/home/chchengl/Greek'</span>;
+    matlabpool <span class="string">close</span> <span class="string">force</span> <span class="string">local</span>
+    matlabpool <span class="string">open</span> <span class="string">12</span>
+<span class="keyword">else</span>
+    home_path = <span class="string">'../..'</span>;
+    <span class="comment">% comment out these if you don't have Parallel Computing Toolbox</span>
+    matlabpool <span class="string">close</span> <span class="string">force</span> <span class="string">local</span>
+    matlabpool <span class="string">open</span> <span class="string">2</span>
+<span class="keyword">end</span>
+
+<span class="comment">% path to save csv submission</span>
+path_to_save_csv = strcat([home_path, <span class="string">'/Submission/MATLAB/Opt_Mean_F1score/'</span>]);
+<span class="keyword">if</span> ~exist(path_to_save_csv, <span class="string">'dir'</span>)
+    disp(<span class="string">'INFO: Creat submission folder'</span>);
+    mkdir(path_to_save_csv);
+<span class="keyword">end</span>
+
+<span class="comment">% add path to toolbox</span>
+addpath(genpath(strcat([home_path, <span class="string">'/MATLAB/'</span>])));
+</pre><h2>General training parameter configuration<a name="2"></a></h2><pre class="codeinput"><span class="comment">% multi-label classification transformation</span>
+<span class="comment">% method for transforming multi-label classification problem into binary</span>
+<span class="comment">% classification problem</span>
+<span class="comment">% transformation = 'BR';</span>
+transformation = <span class="string">'CC'</span>; <span class="comment">% CC works better</span>
+
+<span class="comment">% feature normalization method</span>
+feat_norm_method = <span class="string">'raw'</span>;
+<span class="comment">% feat_norm_method = 'binary';</span>
+<span class="comment">% feat_norm_method = 'binary_inst_norm';</span>
+<span class="comment">% feat_norm_method = 'binary_feat_norm';</span>
+<span class="comment">% feat_norm_method = 'log';</span>
+
+<span class="comment">% random seed to ensure reproducible results</span>
+random_seed = 2014;
+
+<span class="comment">% number of rounds to train random shuffle instace/label data set,</span>
+<span class="comment">% which are used to create the final bagging submission</span>
+nr_round = 5;
+
+<span class="comment">% randomly draw this ratio of samples in each round</span>
+instance_ratio = 1.0;
+instance_replacement = false;
+
+<span class="comment">% randomly draw this ratio of features (without replacement) in each round</span>
+feature_ratio = 1.0;
+</pre><h2>SVM.1 and SCutFBR.1 parameter configuration<a name="3"></a></h2><pre class="codeinput"><span class="comment">% cv folds in SVM.1 and SCutFBR.1</span>
+nr_fold = 3;
+
+<span class="comment">% list of fbr using in SVM.1</span>
+fbr_list = [0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8];
+<span class="comment">% fbr_list = 0.05:0.05:0.95;</span>
+
+<span class="comment">% termination criterion for cyclic optimization in SCutFBR.1</span>
+improve_tol = 0.001;
+
+<span class="comment">% verbose in SCutFBR.1</span>
+<span class="comment">% 0 - quite mode</span>
+<span class="comment">% 1 - fold level</span>
+<span class="comment">% 2 - fold &amp; iteration level</span>
+<span class="comment">% 3 - fold &amp; iteration &amp; label level</span>
+verbose = 3;
+</pre><h2>Linear SVM parameter configuration<a name="4"></a></h2><pre class="codeinput"><span class="comment">% which linear SVM to use</span>
+algorithms = {<span class="string">'l1svm_dual'</span>, <span class="string">'l2svm_dual'</span>, <span class="string">'lr'</span>};
+algorithms = {<span class="string">'l1svm_dual'</span>};
+
+<span class="comment">% cost penalty for linear SVM</span>
+<span class="comment">% try varying C and manually select the best, though it should be based on</span>
+<span class="comment">% automatic CV results.</span>
+<span class="comment">% C = 2.^(-0.2:-0.2:-1);</span>
+<span class="comment">% C = 2^-0.5;</span>
+<span class="comment">% C = 2.^(0.2:0.2:1);</span>
+C = 1; <span class="comment">% default 1 works ok</span>
+
+<span class="comment">% tolerance of termination criterion</span>
+<span class="comment">% NOTE: since SVM training is not the most time consuming part (cyclic</span>
+<span class="comment">% optimization in SCutFBR.1 on the other hand is), we use a small tolerance</span>
+<span class="comment">% to ensure accurate results</span>
+e = 0.0001;
+</pre><h2>Load data<a name="5"></a></h2><pre class="codeinput">disp(<span class="string">'INFO: loading training data'</span>)
+[y_train, X_train, label_map] = read_sparse_ml(strcat([home_path, <span class="string">'/Data/wise2014-train.libsvm'</span>]));
+y_train = full(y_train);
+y_train = 2*y_train - 1;
+
+disp(<span class="string">'INFO: loading testing data'</span>)
+[~, X_test, ~] = read_sparse_ml(strcat([home_path, <span class="string">'/Data/wise2014-test.libsvm'</span>]));
+
+<span class="comment">% useful params</span>
+numTrain = size(X_train, 1);
+numTest = size(X_test, 1);
+numLabel = size(y_train, 2);
+</pre><h2>Train for each cost C and each algorithm of linear SVM<a name="6"></a></h2><pre class="codeinput"><span class="comment">% perform instance-based feature normalization</span>
+[X_train, X_test] = feat_norm(X_train, X_test, feat_norm_method);
+
+<span class="comment">% add bias to the training and testing data</span>
+bias = 1;
+X_train = [bias*ones(numTrain, 1), X_train];
+X_test = [bias*ones(numTest, 1), X_test];
+
+<span class="comment">% initialize prediction matrix and best F1-score vector for each round</span>
+pred = zeros(numTest, numLabel, nr_round);
+best_F = zeros(1, nr_round);
+
+<span class="keyword">for</span> count_algo = 1:length(algorithms)
+    algo = algorithms{count_algo};
+    <span class="keyword">for</span> count_c = 1:length(C)
+        c = C(count_c);
+
+        <span class="comment">% random seed to enable reproducible results</span>
+        rand(<span class="string">'seed'</span>, random_seed);
+
+        <span class="comment">% file name for saving results</span>
+        save_csv_file_name = strcat([path_to_save_csv, transformation,<span class="string">'_'</span>,<span class="keyword">...</span>
+            <span class="string">'[FeatNorm_'</span>, feat_norm_method,<span class="string">']_'</span>,<span class="keyword">...</span>
+            <span class="string">'[SCutFBR_Tol'</span>, num2str(improve_tol),<span class="string">']_'</span>,<span class="keyword">...</span>
+            <span class="string">'[SCutFBR_Fold'</span>,num2str(nr_fold),<span class="string">']_'</span>,<span class="keyword">...</span>
+            <span class="string">'['</span>,algo,<span class="string">']_'</span>,<span class="keyword">...</span>
+            <span class="string">'[SVM_C'</span>, num2str(c), <span class="string">']_'</span>,<span class="keyword">...</span>
+            <span class="string">'[SVM_e'</span>, num2str(e), <span class="string">']_'</span>,<span class="keyword">...</span>
+            <span class="string">'[EnsembleRound'</span>, num2str(nr_round),<span class="string">']_'</span>,<span class="keyword">...</span>
+            <span class="string">'[InstRatio'</span>, num2str(instance_ratio),<span class="string">']_'</span>,<span class="keyword">...</span>
+            <span class="string">'[InstReplacement'</span>, num2str(instance_replacement),<span class="string">']_'</span>,<span class="keyword">...</span>
+            <span class="string">'[FeatRatio'</span>, num2str(feature_ratio),<span class="string">']_'</span>,<span class="keyword">...</span>
+            <span class="string">'[Seed'</span>, num2str(random_seed),<span class="string">']'</span>,<span class="keyword">...</span>
+            <span class="string">'.csv'</span>]);
+        save_model_file_name = strcat([save_csv_file_name(1:end-3),<span class="string">'mat'</span>]);
+
+        <span class="comment">% train random shuffle instace/label data set, which are used</span>
+        <span class="comment">% to create the final bagging submission</span>
+        <span class="keyword">for</span> round = 1:nr_round
+
+            <span class="comment">% randomly draw samples</span>
+            <span class="keyword">if</span> instance_replacement == true
+                <span class="comment">% sampling with replacement</span>
+                <span class="comment">% This is similar as bagging but which is with instance_ratio = 1.0</span>
+                sample_index = randi(numTrain, floor(numTrain*instance_ratio), 1);
+            <span class="keyword">elseif</span> instance_replacement == false
+                <span class="comment">% sampling without replacement as bagging</span>
+                sample_index = randperm(numTrain);
+                sample_index = sample_index(1:floor(numTrain*instance_ratio));
+            <span class="keyword">else</span>
+                error(<span class="string">'instance_replacment can either be logical true or false.'</span>);
+            <span class="keyword">end</span>
+
+            <span class="comment">% randomly draw features</span>
+            feature_index = randperm(numFeat);
+            feature_index = feature_index(1:floor(numFeat*feature_ratio));
+            <span class="comment">% add 1 due to bias term in the first column of feature matrix</span>
+            feature_index = [1, feature_index + 1];
+
+            <span class="comment">% since label order affects the performance of cyclic</span>
+            <span class="comment">% optimization in SCutFBR.1, we shuffle the label order before</span>
+            <span class="comment">% optimization to ensure diverse results</span>
+            label_index = randperm(numLabel);
+            [~, inv_label_index] = sort(label_index);
+
+            <span class="comment">% obtain (W, B) for all labels</span>
+            [W, B, best_F(round)] = train_fbr_list(X_train(sample_index, feature_index), y_train(sample_index, label_index),<span class="keyword">...</span>
+                fbr_list, transformation, algo, c, e, nr_fold, improve_tol, verbose);
+
+            <span class="comment">% make prediction on training data</span>
+            y_train_pred_binary = make_prediction(X_train(sample_index, feature_index), transformation, W, B, <span class="string">'binary'</span>);
+            F = mean_F1score(y_train(sample_index, label_index), y_train_pred_binary);
+            disp(strcat([<span class="string">'Mean F1-score for the training data using final model : F = '</span>, num2str(F)]));
+
+            <span class="comment">% make prediction on testing data</span>
+            p = make_prediction(X_test(:, feature_index), transformation, W, B, <span class="string">'bias_raw'</span>);
+            <span class="comment">% inverse label order to get labels aligned</span>
+            pred(:,:,round) = p(:,inv_label_index);
+
+            <span class="comment">% make binary prediction (0/1) using prediction from 1 up to round run</span>
+            pred1 = (mean(pred(:,:,1:round),3)&gt;0);
+            pred2 = (mean((pred(:,:,1:round)&gt;0),3)&gt;0.5);
+
+            <span class="comment">% make submission</span>
+            save_csv_file_name_rule1 = strcat([save_csv_file_name(1:end-4), <span class="string">'_'</span>,<span class="keyword">...</span>
+                <span class="string">'[Fscore'</span>, num2str(mean(best_F(1:round)), 5), <span class="string">']_'</span>,<span class="keyword">...</span><span class="comment">'</span>
+                <span class="string">'[Round'</span>, num2str(round), <span class="string">']_'</span>,<span class="keyword">...</span>
+                <span class="string">'rule1.csv'</span>]);
+            make_submission(pred1, label_map, save_csv_file_name_rule1);
+
+            save_csv_file_name_rule2 = strcat([save_csv_file_name(1:end-4), <span class="string">'_'</span>,<span class="keyword">...</span>
+                <span class="string">'[Fscore'</span>, num2str(mean(best_F(1:round)), 5), <span class="string">']_'</span>,<span class="keyword">...</span><span class="comment">'</span>
+                <span class="string">'[Round'</span>, num2str(round), <span class="string">']_'</span>,<span class="keyword">...</span>
+                <span class="string">'rule2.csv'</span>]);
+            make_submission(pred2, label_map, save_csv_file_name_rule2);
+
+        <span class="keyword">end</span>
+
+        <span class="comment">% save model in mat format</span>
+        save(save_model_file_name, <span class="string">'pred'</span>, <span class="string">'label_map'</span>, <span class="string">'best_F'</span>, <span class="string">'c'</span>, <span class="string">'algo'</span>);
+
+    <span class="keyword">end</span>
+<span class="keyword">end</span>
+</pre><h2>Clean up<a name="7"></a></h2><pre class="codeinput">matlabpool <span class="string">close</span>
+rmpath(genpath(strcat([home_path, <span class="string">'/MATLAB/'</span>])));
+</pre><p class="footer"><br>
+      Published with MATLAB&reg; 7.10<br></p></div><!--
+##### SOURCE BEGIN #####
+%% My solution to Greek Media Monitoring Multilabel Classification
+% 
+% <http://www.kaggle.com/c/wise-2014 Greek Media Monitoring Multilabel Classification (WISE 2014)>
+%
+% *Author:* Chenglong Chen < <https://www.kaggle.com/users/102203/yr yr@Kaggle> >
+% 
+% *Email:* c.chenglong@gmail.com
+% 
+% *Description:*
+% 
+% - This solution transforms the multi-label classification problem into
+% binary classification problmen using two different methods: Binary 
+% Relevance (BR) and Classifier Chains (CC). See [1] for details. 
+% 
+% - For the "base classifier", it uses linear SVM. In specific, I implement
+% the SVM.1 and SCutFBR.1 approach as described in [2] and [3].
+%
+% - We use liblinear since there are ~6w instances and ~30w features. The
+% classification algorithm can be either l1-loss, l2-loss SVM or logistic
+% regression. (Seems l1-loss SVM works best.)
+%
+% - This implementation is based on the code in the LIBSVM page, i.e.,
+% <http://www.csie.ntu.edu.tw/~cjlin/libsvmtools/multilabel/rcv1/rcv1_lineart_col.m rcv1_lineart_col.m>,
+% which optimizes the macro-average F-measure.
+% Since the evaluation metric for this competition is mean F1-score, we
+% accordingly modify the code above and implement the cyclic optimization
+% procedure as detailed in [3]. Compared with the original code, we
+% observed improvement around 0.01~0.02 by directly optimizing mean
+% F1-score.
+% 
+% *Requirement:*
+% 
+% - <http://www.csie.ntu.edu.tw/~cjlin/liblinear/ LIBLINEAR>   
+%   For instructions of using LIBLINEAR and additional information, see
+%   the README file included in the package and the LIBLINEAR FAQ.
+% 
+% - <http://www.csie.ntu.edu.tw/~cjlin/libsvmtools/multilabel/read_sparse/read_sparse_ml.c
+% Multi-label classification tool: read_sparse_ml.c>
+%   
+% 
+% *Reference:*
+% 
+% [1] Jesse Read, Bernhard Pfahringer, Geoff Holmes, and Eibe Frank,
+% "Classifier chains for multi-label classification."
+%
+% [2] David D. Lewis, Yiming Yang, Tony G. Rose, and Fan Li,
+% "RCV1: A new benchmark collection for text categorization research."
+% _Journal of Machine Learning Research_, 5:361-397, 2004.
+% 
+% [3] Rong-En Fan and Chih-Jen Lin, "A Study on Threshold Selection for
+% Multi-label Classification."
+% 
+%% General configuration for MATLAB
+clear all;
+close all;
+clc;
+
+% use gpucluster or not
+% just for my own use...
+if isunix  % gpucluster is unix platform
+    home_path = '/home/chchengl/Greek';
+    matlabpool close force local
+    matlabpool open 12
+else
+    home_path = '../..';
+    % comment out these if you don't have Parallel Computing Toolbox
+    matlabpool close force local
+    matlabpool open 2
+end
+
+% path to save csv submission
+path_to_save_csv = strcat([home_path, '/Submission/MATLAB/Opt_Mean_F1score/']);
+if ~exist(path_to_save_csv, 'dir')
+    disp('INFO: Creat submission folder');
+    mkdir(path_to_save_csv);
+end
+
+% add path to toolbox
+addpath(genpath(strcat([home_path, '/MATLAB/'])));
+
+
+%% General training parameter configuration
+
+% multi-label classification transformation
+% method for transforming multi-label classification problem into binary
+% classification problem
+% transformation = 'BR';
+transformation = 'CC'; % CC works better
+
+% feature normalization method
+feat_norm_method = 'raw';
+% feat_norm_method = 'binary';
+% feat_norm_method = 'binary_inst_norm';
+% feat_norm_method = 'binary_feat_norm';
+% feat_norm_method = 'log';
+
+% random seed to ensure reproducible results
+random_seed = 2014;
+
+% number of rounds to train random shuffle instace/label data set,
+% which are used to create the final bagging submission
+nr_round = 5;
+
+% randomly draw this ratio of samples in each round
+instance_ratio = 1.0;
+instance_replacement = false;
+
+% randomly draw this ratio of features (without replacement) in each round
+feature_ratio = 1.0;
+
+
+%% SVM.1 and SCutFBR.1 parameter configuration
+
+% cv folds in SVM.1 and SCutFBR.1
+nr_fold = 3;
+
+% list of fbr using in SVM.1
+fbr_list = [0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8];
+% fbr_list = 0.05:0.05:0.95;
+
+% termination criterion for cyclic optimization in SCutFBR.1
+improve_tol = 0.001;
+
+% verbose in SCutFBR.1 
+% 0 - quite mode
+% 1 - fold level
+% 2 - fold & iteration level
+% 3 - fold & iteration & label level
+verbose = 3;
+
+
+%% Linear SVM parameter configuration
+
+% which linear SVM to use
+algorithms = {'l1svm_dual', 'l2svm_dual', 'lr'};
+algorithms = {'l1svm_dual'};
+
+% cost penalty for linear SVM
+% try varying C and manually select the best, though it should be based on
+% automatic CV results.
+% C = 2.^(-0.2:-0.2:-1);
+% C = 2^-0.5;
+% C = 2.^(0.2:0.2:1);
+C = 1; % default 1 works ok
+
+% tolerance of termination criterion
+% NOTE: since SVM training is not the most time consuming part (cyclic
+% optimization in SCutFBR.1 on the other hand is), we use a small tolerance
+% to ensure accurate results
+e = 0.0001;
+
+
+%% Load data
+
+disp('INFO: loading training data')
+[y_train, X_train, label_map] = read_sparse_ml(strcat([home_path, '/Data/wise2014-train.libsvm']));
+y_train = full(y_train);
+y_train = 2*y_train - 1;
+
+disp('INFO: loading testing data')
+[~, X_test, ~] = read_sparse_ml(strcat([home_path, '/Data/wise2014-test.libsvm']));
+
+% useful params
+numTrain = size(X_train, 1);
+numTest = size(X_test, 1);
+numLabel = size(y_train, 2);
+
+
+%% Train for each cost C and each algorithm of linear SVM
+
+% perform instance-based feature normalization
+[X_train, X_test] = feat_norm(X_train, X_test, feat_norm_method);
+
+% add bias to the training and testing data
+bias = 1;
+X_train = [bias*ones(numTrain, 1), X_train];
+X_test = [bias*ones(numTest, 1), X_test];
+
+% initialize prediction matrix and best F1-score vector for each round
+pred = zeros(numTest, numLabel, nr_round);
+best_F = zeros(1, nr_round);
+
+for count_algo = 1:length(algorithms)
+    algo = algorithms{count_algo};
+    for count_c = 1:length(C)
+        c = C(count_c);
+        
+        % random seed to enable reproducible results
+        rand('seed', random_seed);
+        
+        % file name for saving results
+        save_csv_file_name = strcat([path_to_save_csv, transformation,'_',...
+            '[FeatNorm_', feat_norm_method,']_',...
+            '[SCutFBR_Tol', num2str(improve_tol),']_',...
+            '[SCutFBR_Fold',num2str(nr_fold),']_',...
+            '[',algo,']_',...
+            '[SVM_C', num2str(c), ']_',...
+            '[SVM_e', num2str(e), ']_',...
+            '[EnsembleRound', num2str(nr_round),']_',...
+            '[InstRatio', num2str(instance_ratio),']_',...
+            '[InstReplacement', num2str(instance_replacement),']_',...
+            '[FeatRatio', num2str(feature_ratio),']_',...
+            '[Seed', num2str(random_seed),']',...
+            '.csv']);
+        save_model_file_name = strcat([save_csv_file_name(1:end-3),'mat']);
+        
+        % train random shuffle instace/label data set, which are used
+        % to create the final bagging submission
+        for round = 1:nr_round
+            
+            % randomly draw samples
+            if instance_replacement == true
+                % sampling with replacement
+                % This is similar as bagging but which is with instance_ratio = 1.0
+                sample_index = randi(numTrain, floor(numTrain*instance_ratio), 1);
+            elseif instance_replacement == false
+                % sampling without replacement as bagging
+                sample_index = randperm(numTrain);
+                sample_index = sample_index(1:floor(numTrain*instance_ratio));
+            else
+                error('instance_replacment can either be logical true or false.');
+            end
+
+            % randomly draw features
+            feature_index = randperm(numFeat);
+            feature_index = feature_index(1:floor(numFeat*feature_ratio));
+            % add 1 due to bias term in the first column of feature matrix
+            feature_index = [1, feature_index + 1];
+            
+            % since label order affects the performance of cyclic
+            % optimization in SCutFBR.1, we shuffle the label order before
+            % optimization to ensure diverse results
+            label_index = randperm(numLabel);
+            [~, inv_label_index] = sort(label_index);
+
+            % obtain (W, B) for all labels
+            [W, B, best_F(round)] = train_fbr_list(X_train(sample_index, feature_index), y_train(sample_index, label_index),...
+                fbr_list, transformation, algo, c, e, nr_fold, improve_tol, verbose);
+            
+            % make prediction on training data
+            y_train_pred_binary = make_prediction(X_train(sample_index, feature_index), transformation, W, B, 'binary');
+            F = mean_F1score(y_train(sample_index, label_index), y_train_pred_binary);
+            disp(strcat(['Mean F1-score for the training data using final model : F = ', num2str(F)]));
+            
+            % make prediction on testing data
+            p = make_prediction(X_test(:, feature_index), transformation, W, B, 'bias_raw');
+            % inverse label order to get labels aligned
+            pred(:,:,round) = p(:,inv_label_index);
+            
+            % make binary prediction (0/1) using prediction from 1 up to round run
+            pred1 = (mean(pred(:,:,1:round),3)>0);
+            pred2 = (mean((pred(:,:,1:round)>0),3)>0.5);
+            
+            % make submission
+            save_csv_file_name_rule1 = strcat([save_csv_file_name(1:end-4), '_',...
+                '[Fscore', num2str(mean(best_F(1:round)), 5), ']_',...'
+                '[Round', num2str(round), ']_',...
+                'rule1.csv']);
+            make_submission(pred1, label_map, save_csv_file_name_rule1);
+            
+            save_csv_file_name_rule2 = strcat([save_csv_file_name(1:end-4), '_',...
+                '[Fscore', num2str(mean(best_F(1:round)), 5), ']_',...'
+                '[Round', num2str(round), ']_',...
+                'rule2.csv']);
+            make_submission(pred2, label_map, save_csv_file_name_rule2);
+        
+        end
+        
+        % save model in mat format
+        save(save_model_file_name, 'pred', 'label_map', 'best_F', 'c', 'algo');
+        
+    end
+end
+
+%% Clean up
+matlabpool close
+rmpath(genpath(strcat([home_path, '/MATLAB/'])));
+##### SOURCE END #####
+--></body></html>
+<a name="make_prediction"></a>
+
+<!DOCTYPE html
+  PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html><head>
+      <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+   <!--
+This HTML is auto-generated from an M-file.
+To make changes, update the M-file and republish this document.
+      --><title>make_prediction</title><meta name="generator" content="MATLAB 7.10"><meta name="date" content="2014-07-16"><meta name="m-file" content="make_prediction"><style type="text/css">
+
+body {
+  background-color: white;
+  margin:10px;
+}
+
+h1 {
+  color: #990000; 
+  font-size: x-large;
+}
+
+h2 {
+  color: #990000;
+  font-size: medium;
+}
+
+/* Make the text shrink to fit narrow windows, but not stretch too far in 
+wide windows. */ 
+p,h1,h2,div.content div {
+  max-width: 600px;
+  /* Hack for IE6 */
+  width: auto !important; width: 600px;
+}
+
+pre.codeinput {
+  background: #EEEEEE;
+  padding: 10px;
+}
+@media print {
+  pre.codeinput {word-wrap:break-word; width:100%;}
+} 
+
+span.keyword {color: #0000FF}
+span.comment {color: #228B22}
+span.string {color: #A020F0}
+span.untermstring {color: #B20000}
+span.syscmd {color: #B28C00}
+
+pre.codeoutput {
+  color: #666666;
+  padding: 10px;
+}
+
+pre.error {
+  color: red;
+}
+
+p.footer {
+  text-align: right;
+  font-size: xx-small;
+  font-weight: lighter;
+  font-style: italic;
+  color: gray;
+}
+
+  </style></head><body><div class="content"><pre class="codeinput"><span class="comment">%</span>
+<span class="comment">% make prediction</span>
+<span class="comment">%</span>
+
+<span class="keyword">function</span> y = make_prediction(X, transformation, w, b, type)
+
+[numSample, numLabel] = size(X);
+<span class="comment">% raw prediction without bias term</span>
+wTx = zeros(numSample, numLabel);
+<span class="keyword">if</span> strcmp(transformation, <span class="string">'BR'</span>)
+    <span class="keyword">for</span> j = 1:numLabel
+        wTx(:,j) = X * w{j};
+    <span class="keyword">end</span>
+<span class="keyword">elseif</span> strcmp(transformation, <span class="string">'CC'</span>)
+    <span class="keyword">for</span> j = 1:numLabel
+        <span class="comment">% augment the features with previous labels 1 to j-1</span>
+        y_augmented = bsxfun(@plus, wTx(:,1:j-1), b(1:j-1));
+        <span class="comment">% remember to convert to 0/1</span>
+        y_augmented = (y_augmented &gt; 0);
+        wTx(:,j) = [X, y_augmented] * w{j};
+    <span class="keyword">end</span>
+<span class="keyword">else</span>
+    error(<span class="string">'Currently only support BR and CC.'</span>);
+<span class="keyword">end</span>
+
+<span class="keyword">if</span> ~strcmp(type, <span class="string">'no_bias_raw'</span>)
+    <span class="comment">% add bias term</span>
+    y = bsxfun(@plus, wTx, b(:)');
+<span class="keyword">else</span>
+    <span class="comment">% no bias term</span>
+    y = wTx;
+<span class="keyword">end</span>
+
+<span class="keyword">if</span> strcmp(type, <span class="string">'binary'</span>)
+    <span class="comment">% convert to binary -1/+1</span>
+    y = 2*(y&gt;0) - 1;
+<span class="keyword">elseif</span> ~strcmp(type, <span class="string">'no_bias_raw'</span>) &amp;&amp; ~strcmp(type, <span class="string">'bias_raw'</span>)
+    msg = strcat([ <span class="string">'argument type can either be no_bias_raw, bias_raw or binary:\n'</span>,<span class="keyword">...</span>
+                   <span class="string">'no_bias_raw: y = w^T * x\n'</span>,<span class="keyword">...</span>
+                   <span class="string">'bias_raw: y = w^T * x + b\n'</span>,<span class="keyword">...</span>
+                   <span class="string">'binary: y = 2*(w^T *x + b &gt; 0) - 1 \\in {-1,+1}'</span>]);
+    error(<span class="string">'myApp:argChk'</span>, msg);
+<span class="keyword">end</span>
+
+<span class="keyword">end</span>
+</pre><p class="footer"><br>
+      Published with MATLAB&reg; 7.10<br></p></div><!--
+\n
+--></body></html>
+<a name="mean_F1score"></a>
+
+<!DOCTYPE html
+  PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html><head>
+      <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+   <!--
+This HTML is auto-generated from an M-file.
+To make changes, update the M-file and republish this document.
+      --><title>mean_F1score</title><meta name="generator" content="MATLAB 7.10"><meta name="date" content="2014-07-16"><meta name="m-file" content="mean_F1score"><style type="text/css">
+
+body {
+  background-color: white;
+  margin:10px;
+}
+
+h1 {
+  color: #990000; 
+  font-size: x-large;
+}
+
+h2 {
+  color: #990000;
+  font-size: medium;
+}
+
+/* Make the text shrink to fit narrow windows, but not stretch too far in 
+wide windows. */ 
+p,h1,h2,div.content div {
+  max-width: 600px;
+  /* Hack for IE6 */
+  width: auto !important; width: 600px;
+}
+
+pre.codeinput {
+  background: #EEEEEE;
+  padding: 10px;
+}
+@media print {
+  pre.codeinput {word-wrap:break-word; width:100%;}
+} 
+
+span.keyword {color: #0000FF}
+span.comment {color: #228B22}
+span.string {color: #A020F0}
+span.untermstring {color: #B20000}
+span.syscmd {color: #B28C00}
+
+pre.codeoutput {
+  color: #666666;
+  padding: 10px;
+}
+
+pre.error {
+  color: red;
+}
+
+p.footer {
+  text-align: right;
+  font-size: xx-small;
+  font-weight: lighter;
+  font-style: italic;
+  color: gray;
+}
+
+  </style></head><body><div class="content"><pre class="codeinput"><span class="comment">%</span>
+<span class="comment">% Calculate mean F1-score for two-class problem</span>
+<span class="comment">% classes are +1, -1</span>
+<span class="comment">%</span>
+
+<span class="keyword">function</span> F = mean_F1score(original, predict)
+
+tp = full(sum(original == +1 &amp; predict == +1, 2));
+fn = full(sum(original == +1 &amp; predict == -1, 2));
+fp = full(sum(original == -1 &amp; predict == +1, 2));
+
+F = computeF1score(tp, fn, fp);
+
+<span class="keyword">end</span>
+
+
+<span class="comment">%</span>
+<span class="comment">% Calculate mean F1-score for two-class problem using tp, fn, and fp</span>
+<span class="comment">%</span>
+
+<span class="keyword">function</span> F = computeF1score(tp, fn, fp)
+
+<span class="comment">% METHOD 1: vectorization</span>
+flag = double(tp ~= 0 | fp ~= 0 | fn ~= 0);
+F = (2*tp) ./ (2*tp + fp + fn) .* flag;
+F(isnan(F)) = 0;
+F = mean(F);
+
+<span class="comment">% METHOD 2: for-loop</span>
+<span class="comment">% numTrain = size(tp, 1);</span>
+<span class="comment">% F = zeros(1, numTrain);</span>
+<span class="comment">% for i = 1:numTrain</span>
+<span class="comment">%     if tp(i) ~= 0 || fp(i) ~= 0 || fn(i) ~= 0</span>
+<span class="comment">%         F(i) = (2*tp(i)) / (2*tp(i) + fp(i) + fn(i));</span>
+<span class="comment">%     end</span>
+<span class="comment">% end</span>
+<span class="comment">% F = mean(F);</span>
+
+<span class="keyword">end</span>
+</pre><p class="footer"><br>
+      Published with MATLAB&reg; 7.10<br></p></div><!--
+\n
+--></body></html>
+<a name="train_fbr_list"></a>
+
+<!DOCTYPE html
+  PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html><head>
+      <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+   <!--
+This HTML is auto-generated from an M-file.
+To make changes, update the M-file and republish this document.
+      --><title>train_fbr_list</title><meta name="generator" content="MATLAB 7.10"><meta name="date" content="2014-07-16"><meta name="m-file" content="train_fbr_list"><style type="text/css">
+
+body {
+  background-color: white;
+  margin:10px;
+}
+
+h1 {
+  color: #990000; 
+  font-size: x-large;
+}
+
+h2 {
+  color: #990000;
+  font-size: medium;
+}
+
+/* Make the text shrink to fit narrow windows, but not stretch too far in 
+wide windows. */ 
+p,h1,h2,div.content div {
+  max-width: 600px;
+  /* Hack for IE6 */
+  width: auto !important; width: 600px;
+}
+
+pre.codeinput {
+  background: #EEEEEE;
+  padding: 10px;
+}
+@media print {
+  pre.codeinput {word-wrap:break-word; width:100%;}
+} 
+
+span.keyword {color: #0000FF}
+span.comment {color: #228B22}
+span.string {color: #A020F0}
+span.untermstring {color: #B20000}
+span.syscmd {color: #B28C00}
+
+pre.codeoutput {
+  color: #666666;
+  padding: 10px;
+}
+
+pre.error {
+  color: red;
+}
+
+p.footer {
+  text-align: right;
+  font-size: xx-small;
+  font-weight: lighter;
+  font-style: italic;
+  color: gray;
+}
+
+  </style></head><body><div class="content"><pre class="codeinput"><span class="comment">%</span>
+<span class="comment">% train_fbr_list</span>
+<span class="comment">%</span>
+<span class="comment">% Reference:</span>
+<span class="comment">%</span>
+<span class="comment">% [1] David D. Lewis, Yiming Yang, Tony G. Rose, and Fan Li.</span>
+<span class="comment">% RCV1: A new benchmark collection for text categorization research.</span>
+<span class="comment">% Journal of Machine Learning Research, 5:361-397, 2004.</span>
+<span class="comment">%</span>
+<span class="comment">% [2] Rong-En Fan and Chih-Jen Lin.</span>
+<span class="comment">% A Study on Threshold Selection for Multi-label Classification.</span>
+
+
+<span class="keyword">function</span> [w, b, best_F] = train_fbr_list(X_train, y_train, fbr_list,<span class="keyword">...</span>
+    transformation, algo, C, e, nr_fold, improve_tol, verbose)
+
+<span class="comment">% some useful parameters</span>
+[numTrain, ~] = size(X_train);
+numLabel = size(y_train, 2);
+
+<span class="comment">% random shuffle index for cv</span>
+perm = randperm(numTrain)';
+
+f_list = zeros(nr_fold, length(fbr_list));
+
+<span class="comment">% Note: I once tried to use parfor here, so I segmented out each for-loop</span>
+<span class="comment">% block. The speedup is lower than using parfor in scutfbr_mean_F1score.</span>
+<span class="comment">% So I abandoned it soon. Since then the code here leaves unchanged,</span>
+<span class="comment">% though it can be cleaned up (i.e., merge the 3 for-loop blocks).</span>
+
+<span class="comment">% cv index</span>
+train_id = cell(1,5);
+valid_id = cell(1,5);
+<span class="keyword">for</span> fold = 1:nr_fold
+    train_id{fold} = [1:floor((fold-1)*numTrain/nr_fold) floor(fold*numTrain/nr_fold)+1:numTrain]';
+    valid_id{fold} = [floor((fold-1)*numTrain/nr_fold)+1:floor(fold*numTrain/nr_fold)]';
+<span class="keyword">end</span>
+
+<span class="comment">% cv for each fold</span>
+scutfbr_w = cell(1, nr_fold);
+scutfbr_b_list = zeros(length(fbr_list), numLabel, nr_fold);
+<span class="keyword">for</span> fold = 1:nr_fold  <span class="comment">% I tryied parfor here</span>
+    y_train2 = y_train(perm(train_id{fold}),:);
+    X_train2 = X_train(perm(train_id{fold}),:);
+    <span class="comment">% scutfbr_mean_F1score</span>
+    [scutfbr_w{fold}, scutfbr_b_list(:,:,fold)] = scutfbr_mean_F1score(y_train2, X_train2,<span class="keyword">...</span>
+        fbr_list, transformation, algo, C, e, nr_fold, improve_tol, verbose);
+<span class="keyword">end</span>
+
+<span class="comment">% compute mean f score for each fold and each fbr</span>
+<span class="keyword">for</span> fold = 1:nr_fold
+    X_valid = X_train(perm(valid_id{fold}),:);
+    y_valid = y_train(perm(valid_id{fold}),:);
+    <span class="keyword">for</span> i = 1:length(fbr_list)
+        <span class="comment">% make prediction</span>
+        y_pred = make_prediction(X_valid, transformation,<span class="keyword">...</span>
+            scutfbr_w{fold}, squeeze(scutfbr_b_list(i,:,fold)), <span class="string">'binary'</span>);
+        f_list(fold, i) = mean_F1score(y_valid, y_pred);
+    <span class="keyword">end</span>
+<span class="keyword">end</span>
+f_list = mean(f_list);
+
+<span class="comment">% find the best fbr</span>
+best_F = max(f_list);
+best_fbr = fbr_list(find(f_list == best_F, 1, <span class="string">'last'</span>));
+<span class="keyword">if</span> best_F == 0
+    best_fbr = min(fbr_list);
+    fprintf(1, <span class="string">'INFO: train_fbr_list: F all 0\n'</span>);
+<span class="keyword">end</span>
+
+<span class="comment">% final model</span>
+[w, b] = scutfbr_mean_F1score(y_train, X_train, best_fbr,<span class="keyword">...</span>
+    transformation, algo, C, e, nr_fold, improve_tol, verbose);
+
+fprintf(1, <span class="string">'INFO: train_fbr_list: best_fbr %.1f\n'</span>, best_fbr);
+
+<span class="keyword">end</span>
+</pre><p class="footer"><br>
+      Published with MATLAB&reg; 7.10<br></p></div><!--
+\n
+--></body></html>
+<a name="feat_norm"></a>
+
+<!DOCTYPE html
+  PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html><head>
+      <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+   <!--
+This HTML is auto-generated from an M-file.
+To make changes, update the M-file and republish this document.
+      --><title>feat_norm</title><meta name="generator" content="MATLAB 7.10"><meta name="date" content="2014-07-16"><meta name="m-file" content="feat_norm"><style type="text/css">
+
+body {
+  background-color: white;
+  margin:10px;
+}
+
+h1 {
+  color: #990000; 
+  font-size: x-large;
+}
+
+h2 {
+  color: #990000;
+  font-size: medium;
+}
+
+/* Make the text shrink to fit narrow windows, but not stretch too far in 
+wide windows. */ 
+p,h1,h2,div.content div {
+  max-width: 600px;
+  /* Hack for IE6 */
+  width: auto !important; width: 600px;
+}
+
+pre.codeinput {
+  background: #EEEEEE;
+  padding: 10px;
+}
+@media print {
+  pre.codeinput {word-wrap:break-word; width:100%;}
+} 
+
+span.keyword {color: #0000FF}
+span.comment {color: #228B22}
+span.string {color: #A020F0}
+span.untermstring {color: #B20000}
+span.syscmd {color: #B28C00}
+
+pre.codeoutput {
+  color: #666666;
+  padding: 10px;
+}
+
+pre.error {
+  color: red;
+}
+
+p.footer {
+  text-align: right;
+  font-size: xx-small;
+  font-weight: lighter;
+  font-style: italic;
+  color: gray;
+}
+
+  </style></head><body><div class="content"><pre class="codeinput"><span class="comment">%</span>
+<span class="comment">% perform instance-based feature normalization</span>
+<span class="comment">% can be simply extended</span>
+
+<span class="keyword">function</span> [X_train, X_test] = feat_norm(X_train, X_test, method)
+
+<span class="keyword">if</span> strcmp(method, <span class="string">'binary'</span>)
+
+    <span class="comment">% training data</span>
+    X_train = double(X_train&gt;0);
+    <span class="comment">% testing data</span>
+    X_test = double(X_test&gt;0);
+
+<span class="keyword">elseif</span> strcmp(method, <span class="string">'binary_feat_norm'</span>)
+
+    <span class="comment">% training data</span>
+    [numTrain, numFeat] = size(X_train);
+    X_train = double(X_train&gt;0);
+    new = 1./sqrt(sum(X_train.^2, 1));
+    <span class="comment">% use the sparsity property</span>
+    [i, j] = find(X_train);
+    s = new(j);
+    X_train = sparse(i, j, s, numTrain, numFeat);
+
+    <span class="comment">% testing data</span>
+    [numTest, numFeat] = size(X_test);
+    X_test = double(X_test&gt;0);
+    new = 1./sqrt(sum(X_test.^2, 1));
+    <span class="comment">% use the sparsity property</span>
+    [i, j] = find(X_test);
+    s = new(j);
+    X_test = sparse(i, j, s, numTest, numFeat);
+
+<span class="keyword">elseif</span> strcmp(method, <span class="string">'binary_inst_norm'</span>)
+
+    <span class="comment">% training data</span>
+    [numTrain, numFeat] = size(X_train);
+    X_train = double(X_train&gt;0);
+    new = 1./sqrt(sum(X_train.^2, 2));
+    <span class="comment">% use the sparsity property</span>
+    [i, j] = find(X_train);
+    s = new(i);
+    X_train = sparse(i, j, s, numTrain, numFeat);
+
+    <span class="comment">% testing data</span>
+    [numTest, numFeat] = size(X_test);
+    X_test = double(X_test&gt;0);
+    new = 1./sqrt(sum(X_test.^2, 2));
+    <span class="comment">% use the sparsity property</span>
+    [i, j] = find(X_test);
+    s = new(i);
+    X_test = sparse(i, j, s, numTest, numFeat);
+
+<span class="keyword">elseif</span> strcmp(method, <span class="string">'log'</span>)
+
+<span class="keyword">elseif</span> ~strcmp(method, <span class="string">'raw'</span>)
+    error(<span class="string">'Must be either: binary, log, or raw'</span>);
+<span class="keyword">end</span>
+
+<span class="keyword">end</span>
+</pre><p class="footer"><br>
+      Published with MATLAB&reg; 7.10<br></p></div><!--
+\n
+--></body></html>
+<a name="make_submission"></a>
+
+<!DOCTYPE html
+  PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html><head>
+      <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+   <!--
+This HTML is auto-generated from an M-file.
+To make changes, update the M-file and republish this document.
+      --><title>make_submission</title><meta name="generator" content="MATLAB 7.10"><meta name="date" content="2014-07-16"><meta name="m-file" content="make_submission"><style type="text/css">
+
+body {
+  background-color: white;
+  margin:10px;
+}
+
+h1 {
+  color: #990000; 
+  font-size: x-large;
+}
+
+h2 {
+  color: #990000;
+  font-size: medium;
+}
+
+/* Make the text shrink to fit narrow windows, but not stretch too far in 
+wide windows. */ 
+p,h1,h2,div.content div {
+  max-width: 600px;
+  /* Hack for IE6 */
+  width: auto !important; width: 600px;
+}
+
+pre.codeinput {
+  background: #EEEEEE;
+  padding: 10px;
+}
+@media print {
+  pre.codeinput {word-wrap:break-word; width:100%;}
+} 
+
+span.keyword {color: #0000FF}
+span.comment {color: #228B22}
+span.string {color: #A020F0}
+span.untermstring {color: #B20000}
+span.syscmd {color: #B28C00}
+
+pre.codeoutput {
+  color: #666666;
+  padding: 10px;
+}
+
+pre.error {
+  color: red;
+}
+
+p.footer {
+  text-align: right;
+  font-size: xx-small;
+  font-weight: lighter;
+  font-style: italic;
+  color: gray;
+}
+
+  </style></head><body><div class="content"><pre class="codeinput"><span class="comment">%</span>
+<span class="comment">% save prediction in csv format</span>
+<span class="comment">%</span>
+
+<span class="keyword">function</span> make_submission(pre, rcv1_map, save_file_name)
+
+f = fopen(save_file_name, <span class="string">'w'</span>);
+fprintf(f,<span class="string">'%s,%s\n'</span>,<span class="string">'ArticleId'</span>,<span class="string">'Labels'</span>);
+
+start_id = 64857;
+ArticleId = (1:size(pre,1)) + start_id;
+<span class="keyword">for</span> i = 1:size(pre,1)
+    fprintf(f,<span class="string">'%s,'</span>, num2str(ArticleId(i)));
+    this_label = rcv1_map(pre(i,:)==1);
+    <span class="keyword">if</span> isempty(this_label)
+        this_label = 103;
+    <span class="keyword">end</span>
+    <span class="keyword">for</span> j = 1:length(this_label)
+        fprintf(f,<span class="string">' %s'</span>, num2str(this_label(j)));
+    <span class="keyword">end</span>
+    fprintf(f,<span class="string">'\n'</span>);
+<span class="keyword">end</span>
+fclose(f);
+
+<span class="keyword">end</span>
+</pre><p class="footer"><br>
+      Published with MATLAB&reg; 7.10<br></p></div><!--
+\n
+--></body></html>
