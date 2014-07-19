@@ -6,7 +6,7 @@
    <!--
 This HTML is auto-generated from an M-file.
 To make changes, update the M-file and republish this document.
-      --><title>My solution to Greek Media Monitoring Multilabel Classification</title><meta name="generator" content="MATLAB 7.10"><meta name="date" content="2014-07-16"><meta name="m-file" content="train_WISE"><style type="text/css">
+      --><title>My solution to Greek Media Monitoring Multilabel Classification</title><meta name="generator" content="MATLAB 7.10"><meta name="date" content="2014-07-19"><meta name="m-file" content="train_WISE"><style type="text/css">
 
 body {
   background-color: white;
@@ -87,7 +87,8 @@ path_to_save_csv = strcat([home_path, <span class="string">'/Submission/MATLAB/O
 <span class="keyword">end</span>
 
 <span class="comment">% add path to toolbox</span>
-addpath(genpath(strcat([home_path, <span class="string">'/MATLAB/'</span>])));
+addpath(genpath(strcat([home_path, <span class="string">'/MATLAB/Opt_Mean_F1score/'</span>])));
+addpath(genpath(strcat([home_path, <span class="string">'/MATLAB/utils/'</span>])));
 </pre><h2>General training parameter configuration<a name="2"></a></h2><pre class="codeinput"><span class="comment">% multi-label classification transformation</span>
 <span class="comment">% method for transforming multi-label classification problem into binary</span>
 <span class="comment">% classification problem</span>
@@ -131,8 +132,19 @@ improve_tol = 0.001;
 <span class="comment">% 3 - fold &amp; iteration &amp; label level</span>
 verbose = 3;
 </pre><h2>Linear SVM parameter configuration<a name="4"></a></h2><pre class="codeinput"><span class="comment">% which linear SVM to use</span>
-algorithms = {<span class="string">'l1svm_dual'</span>, <span class="string">'l2svm_dual'</span>, <span class="string">'lr'</span>};
-algorithms = {<span class="string">'l1svm_dual'</span>};
+<span class="comment">% During the competition, I only tried the first four and l2reg_l1loss_dual</span>
+<span class="comment">% gives the best and is fast</span>
+algorithms = { <span class="string">'l2reg_lr_primal'</span>,<span class="keyword">...</span>
+               <span class="string">'l2reg_l2loss_dual'</span>,<span class="keyword">...</span>
+               <span class="string">'l2reg_l2loss_primal'</span>,<span class="keyword">...</span>
+               <span class="string">'l2reg_l1loss_dual'</span>,<span class="keyword">...</span>
+               <span class="string">'crammer_singer_svc'</span>,<span class="keyword">...</span>
+               <span class="string">'l1reg_l2loss_svc'</span>,<span class="keyword">...</span>
+               <span class="string">'l1reg_lr'</span>,<span class="keyword">...</span>
+               <span class="string">'l2reg_lr_dual'</span>,<span class="keyword">...</span>
+               };
+algorithms = {<span class="string">'l2reg_l1loss_dual'</span>};
+algorithms = {<span class="string">'l1reg_l2loss_svc'</span>};
 
 <span class="comment">% cost penalty for linear SVM</span>
 <span class="comment">% try varying C and manually select the best, though it should be based on</span>
@@ -156,7 +168,7 @@ disp(<span class="string">'INFO: loading testing data'</span>)
 [~, X_test, ~] = read_sparse_ml(strcat([home_path, <span class="string">'/Data/wise2014-test.libsvm'</span>]));
 
 <span class="comment">% useful params</span>
-numTrain = size(X_train, 1);
+[numTrain, numFeat] = size(X_train);
 numTest = size(X_test, 1);
 numLabel = size(y_train, 2);
 </pre><h2>Train for each cost C and each algorithm of linear SVM<a name="6"></a></h2><pre class="codeinput"><span class="comment">% perform instance-based feature normalization</span>
@@ -225,12 +237,12 @@ best_F = zeros(1, nr_round);
             [~, inv_label_index] = sort(label_index);
 
             <span class="comment">% obtain (W, B) for all labels</span>
-            [W, B, best_F(round)] = train_fbr_list(X_train(sample_index, feature_index), y_train(sample_index, label_index),<span class="keyword">...</span>
+            [W, B, best_F(round)] = train_fbr_list_mean_F1score(X_train(sample_index, feature_index), y_train(sample_index, label_index),<span class="keyword">...</span>
                 fbr_list, transformation, algo, c, e, nr_fold, improve_tol, verbose);
 
             <span class="comment">% make prediction on training data</span>
             y_train_pred_binary = make_prediction(X_train(sample_index, feature_index), transformation, W, B, <span class="string">'binary'</span>);
-            F = mean_F1score(y_train(sample_index, label_index), y_train_pred_binary);
+            F = computeF1score(y_train(sample_index, label_index), y_train_pred_binary, <span class="string">'mean'</span>);
             disp(strcat([<span class="string">'Mean F1-score for the training data using final model : F = '</span>, num2str(F)]));
 
             <span class="comment">% make prediction on testing data</span>
@@ -243,27 +255,26 @@ best_F = zeros(1, nr_round);
             pred2 = (mean((pred(:,:,1:round)&gt;0),3)&gt;0.5);
 
             <span class="comment">% make submission</span>
+            <span class="comment">% rule1</span>
             save_csv_file_name_rule1 = strcat([save_csv_file_name(1:end-4), <span class="string">'_'</span>,<span class="keyword">...</span>
-                <span class="string">'[Fscore'</span>, num2str(mean(best_F(1:round)), 5), <span class="string">']_'</span>,<span class="keyword">...</span><span class="comment">'</span>
+                <span class="string">'[Fscore'</span>, num2str(mean(best_F(1:round)), 5), <span class="string">']_'</span>,<span class="keyword">...</span>
                 <span class="string">'[Round'</span>, num2str(round), <span class="string">']_'</span>,<span class="keyword">...</span>
                 <span class="string">'rule1.csv'</span>]);
             make_submission(pred1, label_map, save_csv_file_name_rule1);
-
+            <span class="comment">% rule2</span>
             save_csv_file_name_rule2 = strcat([save_csv_file_name(1:end-4), <span class="string">'_'</span>,<span class="keyword">...</span>
-                <span class="string">'[Fscore'</span>, num2str(mean(best_F(1:round)), 5), <span class="string">']_'</span>,<span class="keyword">...</span><span class="comment">'</span>
+                <span class="string">'[Fscore'</span>, num2str(mean(best_F(1:round)), 5), <span class="string">']_'</span>,<span class="keyword">...</span>
                 <span class="string">'[Round'</span>, num2str(round), <span class="string">']_'</span>,<span class="keyword">...</span>
                 <span class="string">'rule2.csv'</span>]);
             make_submission(pred2, label_map, save_csv_file_name_rule2);
-
         <span class="keyword">end</span>
-
         <span class="comment">% save model in mat format</span>
         save(save_model_file_name, <span class="string">'pred'</span>, <span class="string">'label_map'</span>, <span class="string">'best_F'</span>, <span class="string">'c'</span>, <span class="string">'algo'</span>);
-
     <span class="keyword">end</span>
 <span class="keyword">end</span>
 </pre><h2>Clean up<a name="7"></a></h2><pre class="codeinput">matlabpool <span class="string">close</span>
-rmpath(genpath(strcat([home_path, <span class="string">'/MATLAB/'</span>])));
+rmpath(genpath(strcat([home_path, <span class="string">'/MATLAB/Opt_Mean_F1score/'</span>])));
+rmpath(genpath(strcat([home_path, <span class="string">'/MATLAB/utils/'</span>])));
 </pre><p class="footer"><br>
       Published with MATLAB&reg; 7.10<br></p></div><!--
 ##### SOURCE BEGIN #####
@@ -345,7 +356,8 @@ if ~exist(path_to_save_csv, 'dir')
 end
 
 % add path to toolbox
-addpath(genpath(strcat([home_path, '/MATLAB/'])));
+addpath(genpath(strcat([home_path, '/MATLAB/Opt_Mean_F1score/'])));
+addpath(genpath(strcat([home_path, '/MATLAB/utils/'])));
 
 
 %% General training parameter configuration
@@ -401,8 +413,19 @@ verbose = 3;
 %% Linear SVM parameter configuration
 
 % which linear SVM to use
-algorithms = {'l1svm_dual', 'l2svm_dual', 'lr'};
-algorithms = {'l1svm_dual'};
+% During the competition, I only tried the first four and l2reg_l1loss_dual
+% gives the best and is fast
+algorithms = { 'l2reg_lr_primal',...
+               'l2reg_l2loss_dual',...
+               'l2reg_l2loss_primal',...
+               'l2reg_l1loss_dual',...
+               'crammer_singer_svc',...
+               'l1reg_l2loss_svc',...
+               'l1reg_lr',...
+               'l2reg_lr_dual',...
+               };
+algorithms = {'l2reg_l1loss_dual'};
+algorithms = {'l1reg_l2loss_svc'};
 
 % cost penalty for linear SVM
 % try varying C and manually select the best, though it should be based on
@@ -430,7 +453,7 @@ disp('INFO: loading testing data')
 [~, X_test, ~] = read_sparse_ml(strcat([home_path, '/Data/wise2014-test.libsvm']));
 
 % useful params
-numTrain = size(X_train, 1);
+[numTrain, numFeat] = size(X_train);
 numTest = size(X_test, 1);
 numLabel = size(y_train, 2);
 
@@ -503,12 +526,12 @@ for count_algo = 1:length(algorithms)
             [~, inv_label_index] = sort(label_index);
 
             % obtain (W, B) for all labels
-            [W, B, best_F(round)] = train_fbr_list(X_train(sample_index, feature_index), y_train(sample_index, label_index),...
+            [W, B, best_F(round)] = train_fbr_list_mean_F1score(X_train(sample_index, feature_index), y_train(sample_index, label_index),...
                 fbr_list, transformation, algo, c, e, nr_fold, improve_tol, verbose);
             
             % make prediction on training data
             y_train_pred_binary = make_prediction(X_train(sample_index, feature_index), transformation, W, B, 'binary');
-            F = mean_F1score(y_train(sample_index, label_index), y_train_pred_binary);
+            F = computeF1score(y_train(sample_index, label_index), y_train_pred_binary, 'mean');
             disp(strcat(['Mean F1-score for the training data using final model : F = ', num2str(F)]));
             
             % make prediction on testing data
@@ -521,28 +544,27 @@ for count_algo = 1:length(algorithms)
             pred2 = (mean((pred(:,:,1:round)>0),3)>0.5);
             
             % make submission
+            % rule1
             save_csv_file_name_rule1 = strcat([save_csv_file_name(1:end-4), '_',...
-                '[Fscore', num2str(mean(best_F(1:round)), 5), ']_',...'
+                '[Fscore', num2str(mean(best_F(1:round)), 5), ']_',...
                 '[Round', num2str(round), ']_',...
                 'rule1.csv']);
             make_submission(pred1, label_map, save_csv_file_name_rule1);
-            
+            % rule2
             save_csv_file_name_rule2 = strcat([save_csv_file_name(1:end-4), '_',...
-                '[Fscore', num2str(mean(best_F(1:round)), 5), ']_',...'
+                '[Fscore', num2str(mean(best_F(1:round)), 5), ']_',...
                 '[Round', num2str(round), ']_',...
                 'rule2.csv']);
-            make_submission(pred2, label_map, save_csv_file_name_rule2);
-        
+            make_submission(pred2, label_map, save_csv_file_name_rule2);        
         end
-        
         % save model in mat format
-        save(save_model_file_name, 'pred', 'label_map', 'best_F', 'c', 'algo');
-        
+        save(save_model_file_name, 'pred', 'label_map', 'best_F', 'c', 'algo');        
     end
 end
 
 %% Clean up
 matlabpool close
-rmpath(genpath(strcat([home_path, '/MATLAB/'])));
+rmpath(genpath(strcat([home_path, '/MATLAB/Opt_Mean_F1score/'])));
+rmpath(genpath(strcat([home_path, '/MATLAB/utils/'])));
 ##### SOURCE END #####
 --></body></html>

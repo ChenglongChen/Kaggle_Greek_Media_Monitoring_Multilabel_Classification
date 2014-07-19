@@ -1,0 +1,223 @@
+
+<!DOCTYPE html
+  PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html><head>
+      <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+   <!--
+This HTML is auto-generated from an M-file.
+To make changes, update the M-file and republish this document.
+      --><title>train_fbr_list_mean_F1score</title><meta name="generator" content="MATLAB 7.10"><meta name="date" content="2014-07-19"><meta name="m-file" content="train_fbr_list_mean_F1score"><style type="text/css">
+
+body {
+  background-color: white;
+  margin:10px;
+}
+
+h1 {
+  color: #990000; 
+  font-size: x-large;
+}
+
+h2 {
+  color: #990000;
+  font-size: medium;
+}
+
+/* Make the text shrink to fit narrow windows, but not stretch too far in 
+wide windows. */ 
+p,h1,h2,div.content div {
+  max-width: 600px;
+  /* Hack for IE6 */
+  width: auto !important; width: 600px;
+}
+
+pre.codeinput {
+  background: #EEEEEE;
+  padding: 10px;
+}
+@media print {
+  pre.codeinput {word-wrap:break-word; width:100%;}
+} 
+
+span.keyword {color: #0000FF}
+span.comment {color: #228B22}
+span.string {color: #A020F0}
+span.untermstring {color: #B20000}
+span.syscmd {color: #B28C00}
+
+pre.codeoutput {
+  color: #666666;
+  padding: 10px;
+}
+
+pre.error {
+  color: red;
+}
+
+p.footer {
+  text-align: right;
+  font-size: xx-small;
+  font-weight: lighter;
+  font-style: italic;
+  color: gray;
+}
+
+  </style></head><body><div class="content"><pre class="codeinput"><span class="comment">%</span>
+<span class="comment">% train_fbr_list_mean_F1score</span>
+<span class="comment">%</span>
+<span class="comment">% Reference:</span>
+<span class="comment">%</span>
+<span class="comment">% [1] David D. Lewis, Yiming Yang, Tony G. Rose, and Fan Li.</span>
+<span class="comment">% RCV1: A new benchmark collection for text categorization research.</span>
+<span class="comment">% Journal of Machine Learning Research, 5:361-397, 2004.</span>
+<span class="comment">%</span>
+<span class="comment">% [2] Rong-En Fan and Chih-Jen Lin.</span>
+<span class="comment">% A Study on Threshold Selection for Multi-label Classification.</span>
+
+
+<span class="keyword">function</span> [w, b, best_F] = train_fbr_list_mean_F1score(X_train, y_train, fbr_list,<span class="keyword">...</span>
+    transformation, algo, C, e, nr_fold, improve_tol, verbose)
+
+<span class="comment">% some useful parameters</span>
+[numTrain, ~] = size(X_train);
+numLabel = size(y_train, 2);
+
+<span class="comment">% random shuffle index for cv</span>
+perm = randperm(numTrain)';
+
+f_list = zeros(nr_fold, length(fbr_list));
+
+<span class="comment">% Note: I once tried to use parfor here, so I segmented out each for-loop</span>
+<span class="comment">% block. The speedup is lower than using parfor in scutfbr_mean_F1score.</span>
+<span class="comment">% So I abandoned it soon. Since then the code here leaves unchanged,</span>
+<span class="comment">% though it can be cleaned up (i.e., merge the 3 for-loop blocks).</span>
+
+<span class="comment">% cv index</span>
+train_id = cell(1,5);
+valid_id = cell(1,5);
+<span class="keyword">for</span> fold = 1:nr_fold
+    train_id{fold} = [1:floor((fold-1)*numTrain/nr_fold) floor(fold*numTrain/nr_fold)+1:numTrain]';
+    valid_id{fold} = [floor((fold-1)*numTrain/nr_fold)+1:floor(fold*numTrain/nr_fold)]';
+<span class="keyword">end</span>
+
+<span class="comment">% cv for each fold</span>
+scutfbr_w = cell(1, nr_fold);
+scutfbr_b_list = zeros(length(fbr_list), numLabel, nr_fold);
+<span class="keyword">for</span> fold = 1:nr_fold  <span class="comment">% I tryied parfor here</span>
+    y_train2 = y_train(perm(train_id{fold}),:);
+    X_train2 = X_train(perm(train_id{fold}),:);
+    <span class="comment">% scutfbr_mean_F1score</span>
+    [scutfbr_w{fold}, scutfbr_b_list(:,:,fold)] = scutfbr_mean_F1score(y_train2, X_train2,<span class="keyword">...</span>
+        fbr_list, transformation, algo, C, e, nr_fold, improve_tol, verbose);
+<span class="keyword">end</span>
+
+<span class="comment">% compute mean f score for each fold and each fbr</span>
+<span class="keyword">for</span> fold = 1:nr_fold
+    X_valid = X_train(perm(valid_id{fold}),:);
+    y_valid = y_train(perm(valid_id{fold}),:);
+    <span class="keyword">for</span> i = 1:length(fbr_list)
+        <span class="comment">% make prediction</span>
+        y_pred = make_prediction(X_valid, transformation,<span class="keyword">...</span>
+            scutfbr_w{fold}, squeeze(scutfbr_b_list(i,:,fold)), <span class="string">'binary'</span>);
+        f_list(fold, i) = computeF1score(y_valid, y_pred, <span class="string">'mean'</span>);
+    <span class="keyword">end</span>
+<span class="keyword">end</span>
+f_list = mean(f_list);
+
+<span class="comment">% find the best fbr</span>
+best_F = max(f_list);
+best_fbr = fbr_list(find(f_list == best_F, 1, <span class="string">'last'</span>));
+<span class="keyword">if</span> best_F == 0
+    best_fbr = min(fbr_list);
+    fprintf(1, <span class="string">'INFO: train_fbr_list: F all 0\n'</span>);
+<span class="keyword">end</span>
+
+<span class="comment">% final model</span>
+[w, b] = scutfbr_mean_F1score(y_train, X_train, best_fbr,<span class="keyword">...</span>
+    transformation, algo, C, e, nr_fold, improve_tol, verbose);
+
+fprintf(1, <span class="string">'INFO: train_fbr_list: best_fbr %.1f\n'</span>, best_fbr);
+
+<span class="keyword">end</span>
+</pre><p class="footer"><br>
+      Published with MATLAB&reg; 7.10<br></p></div><!--
+##### SOURCE BEGIN #####
+%
+% train_fbr_list_mean_F1score
+% 
+% Reference:
+% 
+% [1] David D. Lewis, Yiming Yang, Tony G. Rose, and Fan Li.
+% RCV1: A new benchmark collection for text categorization research.
+% Journal of Machine Learning Research, 5:361-397, 2004.
+% 
+% [2] Rong-En Fan and Chih-Jen Lin.
+% A Study on Threshold Selection for Multi-label Classification.
+
+
+function [w, b, best_F] = train_fbr_list_mean_F1score(X_train, y_train, fbr_list,...
+    transformation, algo, C, e, nr_fold, improve_tol, verbose)
+
+% some useful parameters
+[numTrain, ~] = size(X_train);
+numLabel = size(y_train, 2);
+
+% random shuffle index for cv
+perm = randperm(numTrain)';
+
+f_list = zeros(nr_fold, length(fbr_list));
+
+% Note: I once tried to use parfor here, so I segmented out each for-loop
+% block. The speedup is lower than using parfor in scutfbr_mean_F1score.
+% So I abandoned it soon. Since then the code here leaves unchanged,
+% though it can be cleaned up (i.e., merge the 3 for-loop blocks).
+
+% cv index 
+train_id = cell(1,5);
+valid_id = cell(1,5);
+for fold = 1:nr_fold
+    train_id{fold} = [1:floor((fold-1)*numTrain/nr_fold) floor(fold*numTrain/nr_fold)+1:numTrain]';
+    valid_id{fold} = [floor((fold-1)*numTrain/nr_fold)+1:floor(fold*numTrain/nr_fold)]';
+end
+
+% cv for each fold
+scutfbr_w = cell(1, nr_fold);
+scutfbr_b_list = zeros(length(fbr_list), numLabel, nr_fold);
+for fold = 1:nr_fold  % I tryied parfor here
+    y_train2 = y_train(perm(train_id{fold}),:);
+    X_train2 = X_train(perm(train_id{fold}),:);
+    % scutfbr_mean_F1score
+    [scutfbr_w{fold}, scutfbr_b_list(:,:,fold)] = scutfbr_mean_F1score(y_train2, X_train2,...
+        fbr_list, transformation, algo, C, e, nr_fold, improve_tol, verbose);
+end
+
+% compute mean f score for each fold and each fbr
+for fold = 1:nr_fold
+    X_valid = X_train(perm(valid_id{fold}),:);
+    y_valid = y_train(perm(valid_id{fold}),:);
+    for i = 1:length(fbr_list)
+        % make prediction
+        y_pred = make_prediction(X_valid, transformation,...
+            scutfbr_w{fold}, squeeze(scutfbr_b_list(i,:,fold)), 'binary');
+        f_list(fold, i) = computeF1score(y_valid, y_pred, 'mean');
+    end
+end
+f_list = mean(f_list);
+
+% find the best fbr
+best_F = max(f_list);
+best_fbr = fbr_list(find(f_list == best_F, 1, 'last'));
+if best_F == 0
+    best_fbr = min(fbr_list);
+    fprintf(1, 'INFO: train_fbr_list: F all 0\n');
+end
+
+% final model
+[w, b] = scutfbr_mean_F1score(y_train, X_train, best_fbr,...
+    transformation, algo, C, e, nr_fold, improve_tol, verbose);
+
+fprintf(1, 'INFO: train_fbr_list: best_fbr %.1f\n', best_fbr);
+
+end
+##### SOURCE END #####
+--></body></html>

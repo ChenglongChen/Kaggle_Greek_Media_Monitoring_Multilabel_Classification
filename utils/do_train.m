@@ -36,8 +36,8 @@ cmd = strcat(['-s ', num2str(s), ' -c ', num2str(C), ' -w1 ', num2str(w_pos,2), 
 model = train(y, x, cmd);
 
 w = model.w(:);
-b = model.bias;
-% b = 0;
+% b = model.bias;
+b = 0;
 
 if model.Label(1) == -1
   w = -w;

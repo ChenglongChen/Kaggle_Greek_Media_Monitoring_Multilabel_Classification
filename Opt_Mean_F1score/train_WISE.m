@@ -76,7 +76,8 @@ if ~exist(path_to_save_csv, 'dir')
 end
 
 % add path to toolbox
-addpath(genpath(strcat([home_path, '/MATLAB/'])));
+addpath(genpath(strcat([home_path, '/MATLAB/Opt_Mean_F1score/'])));
+addpath(genpath(strcat([home_path, '/MATLAB/utils/'])));
 
 
 %% General training parameter configuration
@@ -144,7 +145,7 @@ algorithms = { 'l2reg_lr_primal',...
                'l2reg_lr_dual',...
                };
 algorithms = {'l2reg_l1loss_dual'};
-% algorithms = {'l1reg_l2loss_loss'};
+algorithms = {'l1reg_l2loss_svc'};
 
 % cost penalty for linear SVM
 % try varying C and manually select the best, though it should be based on
@@ -245,12 +246,12 @@ for count_algo = 1:length(algorithms)
             [~, inv_label_index] = sort(label_index);
 
             % obtain (W, B) for all labels
-            [W, B, best_F(round)] = train_fbr_list(X_train(sample_index, feature_index), y_train(sample_index, label_index),...
+            [W, B, best_F(round)] = train_fbr_list_mean_F1score(X_train(sample_index, feature_index), y_train(sample_index, label_index),...
                 fbr_list, transformation, algo, c, e, nr_fold, improve_tol, verbose);
             
             % make prediction on training data
             y_train_pred_binary = make_prediction(X_train(sample_index, feature_index), transformation, W, B, 'binary');
-            F = mean_F1score(y_train(sample_index, label_index), y_train_pred_binary);
+            F = computeF1score(y_train(sample_index, label_index), y_train_pred_binary, 'mean');
             disp(strcat(['Mean F1-score for the training data using final model : F = ', num2str(F)]));
             
             % make prediction on testing data
@@ -263,26 +264,25 @@ for count_algo = 1:length(algorithms)
             pred2 = (mean((pred(:,:,1:round)>0),3)>0.5);
             
             % make submission
+            % rule1
             save_csv_file_name_rule1 = strcat([save_csv_file_name(1:end-4), '_',...
-                '[Fscore', num2str(mean(best_F(1:round)), 5), ']_',...'
+                '[Fscore', num2str(mean(best_F(1:round)), 5), ']_',...
                 '[Round', num2str(round), ']_',...
                 'rule1.csv']);
             make_submission(pred1, label_map, save_csv_file_name_rule1);
-            
+            % rule2
             save_csv_file_name_rule2 = strcat([save_csv_file_name(1:end-4), '_',...
-                '[Fscore', num2str(mean(best_F(1:round)), 5), ']_',...'
+                '[Fscore', num2str(mean(best_F(1:round)), 5), ']_',...
                 '[Round', num2str(round), ']_',...
                 'rule2.csv']);
-            make_submission(pred2, label_map, save_csv_file_name_rule2);
-        
+            make_submission(pred2, label_map, save_csv_file_name_rule2);        
         end
-        
         % save model in mat format
-        save(save_model_file_name, 'pred', 'label_map', 'best_F', 'c', 'algo');
-        
+        save(save_model_file_name, 'pred', 'label_map', 'best_F', 'c', 'algo');        
     end
 end
 
 %% Clean up
 matlabpool close
-rmpath(genpath(strcat([home_path, '/MATLAB/'])));
+rmpath(genpath(strcat([home_path, '/MATLAB/Opt_Mean_F1score/'])));
+rmpath(genpath(strcat([home_path, '/MATLAB/utils/'])));

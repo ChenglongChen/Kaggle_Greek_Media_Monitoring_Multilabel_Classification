@@ -272,11 +272,14 @@ function F = cyclic_opt_update_macroF1score_BR(y_valid, y_pred, j, thresh_index)
 % NOTE: The following can only be done in a sequetial manner,
 % so do NOT use parfor here
 
-[numValid, numLabel] = size(y_valid);
-% change y_pred at index j as all ones
-y_pred_tmp = [y_pred(:,1:j-1), ones(numValid, 1), y_pred(:,j+1:end)];
-f_macro = computeF1score(y_valid, y_pred_tmp, 'macro');
 
+% count tp/fn/fp using labels other than label j to save time
+% since they are not affected by the optimization on label j
+TP = sum(y_valid(:,[1:j-1,j+1:end]) == +1 & y_pred(:,[1:j-1,j+1:end]) == +1, 1);
+FN = sum(y_valid(:,[1:j-1,j+1:end]) == +1 & y_pred(:,[1:j-1,j+1:end]) == -1, 1);
+FP = sum(y_valid(:,[1:j-1,j+1:end]) == -1 & y_pred(:,[1:j-1,j+1:end]) == +1, 1);
+
+numValid = size(y_valid(:,j), 1);
 F = zeros(1, numValid);
 
 % initialize each instance's tp/fp/fn for label j
@@ -287,7 +290,8 @@ fn = 0;
 flag = double(tp ~= 0 | fp ~= 0 | fn ~= 0);
 f = (2*tp) ./ (2*tp + fp + fn) .* flag;
 f(isnan(f)) = 0;
-
+% initialize mean F1-score
+f_mean = mean(f);
 
 % scan through all thresholds
 % Note: the following for-loop might be further speeded up using mex code
@@ -296,96 +300,11 @@ for i = 1:numValid
     ii = thresh_index(i);
     % update tp/fp/fn of instance at index ii
     if y_valid(ii,j) == -1
-        fp = fp - 1;
-    else
-        tp = tp - 1;
-        fn = fn + 1;
-    end
-    % update F1-score of instance at index ii
-    flag_ii = double(tp ~= 0 | fp ~= 0 | fn ~= 0);
-    f_ii_new = (2*tp) ./ (2*tp + fp + fn) .* flag_ii;
-    f_ii_new(isnan(f_ii_new)) = 0;
-    % update mean F1-score using the new F1-score of instance
-    % at index ii
-    f_macro = f_macro + (f_ii_new - f) / numLabel;
-    F(i) = f_macro;
-end
-
-end
-
-
-function F = cyclic_opt_update_F_CC(y_valid, y_pred, j, thresh_index, wTx, scut_w, scut_b)
-% METHOD 3: using for [approximately 0.1~0.3s]
-% It is inspired by scutfbr.m in
-% http://www.csie.ntu.edu.tw/~cjlin/libsvmtools/multilabel/rcv1/rcv1_lineart_col.m
-% NOTE: The following can only be done in a sequetial manner,
-% so do NOT use parfor here
-
-% count tp/fn/fp using labels 1,2,...,j-1 to save time
-% since they are not affected by the optimization on label j
-TP = sum(y_valid(:,[1:j-1,j+1:end]) == +1 & y_pred(:,[1:j-1,j+1:end]) == +1, 2);
-FN = sum(y_valid(:,[1:j-1,j+1:end]) == +1 & y_pred(:,[1:j-1,j+1:end]) == -1, 2);
-FP = sum(y_valid(:,[1:j-1,j+1:end]) == -1 & y_pred(:,[1:j-1,j+1:end]) == +1, 2);
-
-TP_j = sum(y_valid(:,j+1:end) == +1 & y_pred(:,j+1:end) == +1, 2);
-FN_j = sum(y_valid(:,j+1:end) == +1 & y_pred(:,j+1:end) == -1, 2);
-FP_j = sum(y_valid(:,j+1:end) == -1 & y_pred(:,j+1:end) == +1, 2);
-
-numValid = size(y_valid, 1);
-numLabel = size(y_valid, 2);
-F = zeros(1, numValid);
-
-% initialize each instance's tp/fp/fn for label j
-tp = double(y_valid(:,j) == +1);
-fp = 1 - tp;
-fn = zeros(numValid, 1);
-% combine with results from other labels
-tp = tp + TP;
-fp = fp + FP;
-fn = fn + FN;
-% initialize F1-score for each instance
-flag = double(tp ~= 0 | fp ~= 0 | fn ~= 0);
-f = (2*tp) ./ (2*tp + fp + fn) .* flag;
-f(isnan(f)) = 0;
-% initialize mean F1-score
-f_mean = mean(f);
-
-% scan through all thresholds
-% Note: the following for-loop might be further speeded up using mex code
-y_pred_old = y_pred;
-for i = 1:numValid
-    % get the index of this instance
-    ii = thresh_index(i);
-    % update tp/fp/fn of instance at index ii
-    if y_valid(ii, j) == -1
         fp(ii) = fp(ii) - 1;
     else
         tp(ii) = tp(ii) - 1;
         fn(ii) = fn(ii) + 1;
     end
-    
-    % update for labels j+1 ~ numLabel if necessary
-    if (y_pred_old(ii,j) == +1 && j < numLabel)
-        y_pred(ii,j) = -1;
-        for jj = j+1:numLabel
-            % no bias raw prediction
-            % augment the features with previous labels 1 to j-1
-            % remember to convert labels -1/+1 to 0/1 (necessary?)
-            delta_y = ( y_pred(ii,j:jj-1) - y_pred_old(ii,j:jj-1) ) / 2;
-            delta_wTx = delta_y * scut_w{jj}(end-jj+j+1:end);
-            wTx(ii,jj) = wTx(ii,jj) + delta_wTx;
-            % binary prediction
-            y_pred(ii,jj) = 2*(wTx(ii,jj) + scut_b(jj)>0) - 1;
-        end
-        % update tp/fn/fp
-        delta_tp_ii = sum(y_valid(ii,j+1:end) == +1 & y_pred(ii,j+1:end) == +1) - TP_j(ii);
-        delta_fn_ii = sum(y_valid(ii,j+1:end) == +1 & y_pred(ii,j+1:end) == -1) - FN_j(ii);
-        delta_fp_ii = sum(y_valid(ii,j+1:end) == -1 & y_pred(ii,j+1:end) == +1) - FP_j(ii);
-        tp(ii) = tp(ii) + delta_tp_ii;
-        fn(ii) = fn(ii) + delta_fn_ii;
-        fp(ii) = fp(ii) + delta_fp_ii;
-    end
-    
     % update F1-score of instance at index ii
     flag_ii = double(tp(ii) ~= 0 | fp(ii) ~= 0 | fn(ii) ~= 0);
     f_ii_new = (2*tp(ii)) ./ (2*tp(ii) + fp(ii) + fn(ii)) .* flag_ii;
@@ -398,7 +317,8 @@ end
 
 end
 
-function F = cyclic_opt_update_macroF1score_CC(y_valid, y_pred, j, thresh_index, wTx, scut_w, scut_b)
+
+function F = cyclic_opt_update_F_CC(y_valid, y_pred, j, thresh_index, wTx, scut_w, scut_b)
 % METHOD 3: using for [approximately 0.1~0.3s]
 % It is inspired by scutfbr.m in
 % http://www.csie.ntu.edu.tw/~cjlin/libsvmtools/multilabel/rcv1/rcv1_lineart_col.m
